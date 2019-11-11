@@ -26,5 +26,5 @@ _It is **strongly** suggested that you use the [asdf version manager](https://as
 
 ## Backlog
 
-[ ] Echo action in ApiController.
-[ ] ...
+- [ ] Echo action in ApiController.
+- [ ] ...
