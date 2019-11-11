@@ -23,12 +23,9 @@ defmodule TrivWeb.Scoreboard do
   def handle_info({:broadcast, triv_event}, socket) do
     updated_socket =
       case triv_event do
-        {:buzz, token} -> assign(socket, :current_team, token)
-        {:duds, dud_list} -> assign(socket, :current_duds, dud_list)
         {:question, q} -> handle_question(q, socket)
-        {:revealing, r} -> assign(socket, :revealing, r)
-        {:gating, g} -> assign(socket, :gating, g)
-        :clear -> assign(socket, %{:current_team => nil, :current_duds => nil})
+        :clear -> assign(socket, %{:buzz => nil, :duds => nil})
+        {k, v} when k in ~w(buzz duds gating revealing)a -> assign(socket, k, v)
         ignored -> inspect_debug(ignored, socket)
       end
 
@@ -56,12 +53,13 @@ defmodule TrivWeb.Scoreboard do
     {correct_answer, candidate_answers} = extract_question(question)
 
     assign(socket,
-      current_question: question["question"],
+      current_question: question["question"] || "",
       current_answer: correct_answer,
-      current_team: game[:current_team],
-      current_duds: game[:current_duds],
-      gating: game[:gating] || false,
-      candidate_answers: candidate_answers
+      candidate_answers: candidate_answers,
+      buzz: game[:buzz],
+      duds: game[:duds] || [],
+      revealing: game[:revealing] || false,
+      gating: game[:gating] || false
     )
   end
 
@@ -72,13 +70,13 @@ defmodule TrivWeb.Scoreboard do
       :current_question => q["question"],
       :current_answer => correct_answer,
       :candidate_answers => candidate_answers,
-      :reveal => false
+      :revealing => false
     })
   end
 
   defp extract_question(q) do
-    correct_answer = q["correct_answer"]
-    incorrect_answers = q["incorrect_answers"]
+    correct_answer = q["correct_answer"] || ""
+    incorrect_answers = q["incorrect_answers"] || []
     answers = [correct_answer | incorrect_answers]
 
     candidate_answers =

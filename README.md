@@ -23,3 +23,8 @@ _It is **strongly** suggested that you use the [asdf version manager](https://as
 * Install Erlang, Elixir and Node.js with `asdf install`.
 * Install Elixir dependencies with `mix deps.get`.
 * Install Node.js dependencies with `cd assets && npm install`.
+
+## Backlog
+
+[ ] Echo action in ApiController.
+[ ] ...

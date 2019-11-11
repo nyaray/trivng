@@ -6,8 +6,8 @@
   <% end %>
 </h3>
 <% end %>
-<h3 class="question-marker">A: <%= if assigns[:revealing] do %><span><%= assigns[:current_answer] || "" %></span><% end %></h3>
-<%= if assigns[:current_team] == nil do %>
+<h3 class="question-marker">A: <%= if assigns[:revealing] do %><span><%= (assigns[:current_answer] || "") |> HtmlEntities.decode() %></span><% end %></h3>
+<%= if assigns[:buzz] == nil do %>
 <h1 class="gate">
   <em>
   <%= if assigns[:gating] == true do %>
@@ -18,12 +18,12 @@
   </em>
 </h1>
 <% else %>
-<h1><em>First: </em><%= assigns[:current_team] %></h1>
+<h1><em>First: </em><%= assigns[:buzz] %></h1>
 <% end %>
-<%= if is_list(assigns[:current_duds]) and length(assigns[:current_duds]) > 0 do %>
+<%= if is_list(assigns[:duds]) and length(assigns[:duds]) > 0 do %>
 <h1>
   <div>Slowpokes</div>
-  <%= for {dud, idx} <- Enum.with_index(assigns[:current_duds]) do %>
+  <%= for {dud, idx} <- Enum.with_index(assigns[:duds]) do %>
   <div><%= idx + 1 %>. <%= dud %></div>
   <% end %>
 </h1>
