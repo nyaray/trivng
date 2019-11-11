@@ -1,0 +1,30 @@
+<h3 class="question-marker">Q: <span><%= (assigns[:current_question] || "") |> HtmlEntities.decode() %></span></h3>
+<%= if assigns[:candidate_answers] != [] do %>
+<h3 class="question-marker">
+  <%= for {answer, idx} <- Enum.with_index(assigns[:candidate_answers] || []) do %>
+  <div><%= idx + 1 %>. <%= answer |> HtmlEntities.decode() %></div>
+  <% end %>
+</h3>
+<% end %>
+<h3 class="question-marker">A: <%= if assigns[:revealing] do %><span><%= assigns[:current_answer] || "" %></span><% end %></h3>
+<%= if assigns[:current_team] == nil do %>
+<h1 class="gate">
+  <em>
+  <%= if assigns[:gating] == true do %>
+    <span class="wait">WAIT</span>
+  <% else %>
+    <span class="press">PRESS</span>
+  <% end %>
+  </em>
+</h1>
+<% else %>
+<h1><em>First: </em><%= assigns[:current_team] %></h1>
+<% end %>
+<%= if is_list(assigns[:current_duds]) and length(assigns[:current_duds]) > 0 do %>
+<h1>
+  <div>Slowpokes</div>
+  <%= for {dud, idx} <- Enum.with_index(assigns[:current_duds]) do %>
+  <div><%= idx + 1 %>. <%= dud %></div>
+  <% end %>
+</h1>
+<% end %>

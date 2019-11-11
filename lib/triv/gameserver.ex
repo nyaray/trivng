@@ -1,0 +1,255 @@
+defmodule Triv.GameServer do
+  @gate_time_secs 5
+  @pubsub __MODULE__.PubSub
+  @pubsub_key "trivia"
+
+  require Logger
+  use GenServer
+
+  alias __MODULE__.State
+
+  def registry_spec(), do: Registry.child_spec(name: @pubsub, keys: :duplicate)
+
+  # STATE
+  defmodule State do
+    defstruct current_team: nil,
+              current_peers: MapSet.new(),
+              duds: :queue.new(),
+              gating: false,
+              gating_timer: nil,
+              gating_timer_ref: nil,
+              question: nil,
+              revealing: false
+
+    def new(), do: %State{}
+
+    def new_round(question, gating_timer, gating_timer_ref) do
+      %State{
+        question: question,
+        gating_timer: gating_timer,
+        gating: true,
+        gating_timer_ref: gating_timer_ref,
+        revealing: false
+      }
+    end
+
+    def stop_gating(state),
+      do: %State{
+        state
+        | gating: false,
+          gating_timer: nil,
+          gating_timer_ref: nil
+      }
+
+    def current_team(state, team_token) do
+      %State{state | current_team: team_token}
+    end
+
+    def add_dud(state = %State{duds: duds}, dud) do
+      cond do
+        state.current_team === dud ->
+          {false, state}
+
+        :queue.member(dud, duds) ->
+          {false, state}
+
+        true ->
+          duds = :queue.in(dud, duds)
+          {true, %State{state | duds: duds}}
+      end
+    end
+
+    def share_duds(state), do: :queue.to_list(state.duds)
+  end
+
+  # api
+
+  def update_question(q), do: GenServer.call(__MODULE__, {:question, q})
+
+  def buzz(peer, team_token),
+    do: GenServer.call(__MODULE__, {:buzz, {peer, team_token}})
+
+  def clear_buzz(), do: GenServer.call(__MODULE__, :clear)
+
+  def reveal(), do: GenServer.call(__MODULE__, :reveal)
+
+  def join() do
+    {:ok, _} = Registry.register(@pubsub, @pubsub_key, nil)
+    GenServer.call(__MODULE__, :join)
+  end
+
+  def start_link(), do: GenServer.start_link(__MODULE__, [], name: __MODULE__)
+
+  # callbacks
+
+  def init(_args) do
+    {:ok, State.new()}
+  end
+
+  def handle_call(c = {:question, _question}, _from, state) do
+    handle_question(c, state)
+  end
+
+  def handle_call({:buzz, {peer, team_token}}, _from, state) do
+    handle_buzz(peer, {:buzz, team_token}, state)
+  end
+
+  def handle_call(:clear, _from, state), do: handle_clear(state)
+  def handle_call(:reveal, _from, state), do: handle_reveal(state)
+  def handle_call(:join, {from, _ref}, state), do: handle_join(from, state)
+  def handle_call(_, _from, state), do: {:reply, {:error, :bad_call}, state}
+
+  # TODO handle the new ref here
+  def handle_info(
+        {:gating_timeout, timeout_ref},
+        state = %State{gating: true, gating_timer_ref: timer_ref}
+      ) do
+    case timeout_ref do
+      ^timer_ref ->
+        Logger.debug(fn -> "Gate timed out, accepting buzzes" end)
+        dispatch({:gating, false})
+        {:noreply, State.stop_gating(state)}
+
+      _ ->
+        {:noreply, state}
+    end
+  end
+
+  def handle_info({:gating_timeout, old_ref}, state = %State{gating: false}) do
+    Logger.debug(fn -> "Not gating, dropping timout for #{inspect(old_ref)}" end)
+    {:noreply, state}
+  end
+
+  def handle_info(msg, state) do
+    Logger.debug(fn -> "Got unexpected info #{inspect(msg)}" end)
+    {:noreply, state}
+  end
+
+  # internals
+
+  defp handle_question(call = {:question, q}, _state) do
+    %{
+      "question" => question,
+      "correct_answer" => correct_answer,
+      "incorrect_answers" => incorrect_answers
+    } = q
+
+    Logger.info([
+      "Updating question\n",
+      "  QUESTION: #{inspect(question)}\n",
+      "  INCORRECT ANSWERS: #{inspect(incorrect_answers)}\n",
+      "  CORRECT ANSWER: #{inspect(correct_answer)}\n"
+    ])
+
+    dispatch({:revealing, false})
+    dispatch(call)
+    dispatch(:clear)
+    dispatch({:gating, true})
+
+    timeout_ref = make_ref()
+
+    {:ok, gating_timer} =
+      :timer.send_after(@gate_time_secs * 1000, {:gating_timeout, timeout_ref})
+
+    state = State.new_round(q, gating_timer, timeout_ref)
+
+    {:reply, :ok, state}
+  end
+
+  # BUZZING
+
+  defp handle_buzz(_peer, _c, state = %State{gating: true}) do
+    # TODO: figure out cooldown'ing of peers who buzz during gating
+    # TODO: unify cooldown checker and check_buzz_peer
+    {:reply, :rejected, state}
+  end
+
+  defp handle_buzz(peer, c, state = %State{current_peers: current_peers}) do
+    case check_buzz_peer(peer, state) do
+      :cont ->
+        new_state = %State{
+          state
+          | current_peers: MapSet.put(current_peers, peer)
+        }
+
+        do_handle_buzz(c, new_state)
+
+      :halt ->
+        Logger.info("Peer rejected for re-buzzing: #{inspect({peer, c})}")
+        {:reply, :rejected, state}
+    end
+  end
+
+  defp check_buzz_peer({127, 0, 0, 1}, _state), do: :cont
+
+  defp check_buzz_peer(peer, %State{current_peers: current_peers}),
+    do: if(peer in current_peers, do: :halt, else: :cont)
+
+  defp do_handle_buzz(
+         c = {:buzz, team_token},
+         state = %State{current_team: nil}
+       ) do
+    Logger.info("Accepting: #{inspect(team_token)}")
+    dispatch(c)
+    {:reply, :accepted, State.current_team(state, team_token)}
+  end
+
+  defp do_handle_buzz({:buzz, team_token}, state) do
+    Logger.info([
+      "Rejecting: #{inspect(team_token)}, ",
+      "buzzer is: #{inspect(state.current_team)}"
+    ])
+
+    {is_new_dud, state} = State.add_dud(state, team_token)
+    if is_new_dud, do: dispatch({:duds, State.share_duds(state)})
+
+    {:reply, :rejected, state}
+  end
+
+  # REVEALING
+
+  defp handle_reveal(state) do
+    Logger.info("Revealing answer.")
+
+    dispatch({:revealing, true})
+
+    state = %State{state | revealing: true}
+    {:reply, :ok, state}
+  end
+
+  # CLEARING
+
+  defp handle_clear(state) do
+    Logger.info("Clearing buzzers, winner was: #{inspect(state.current_team)}")
+
+    dispatch(:clear)
+    dispatch({:revealing, false})
+
+    state = %State{State.new() | question: state.question, revealing: false}
+    {:reply, :ok, state}
+  end
+
+  # JOINING
+
+  defp handle_join(from, state) do
+    Logger.info("Join from #{inspect(from)}")
+
+    {:reply,
+     {:ok,
+      [
+        gating: state.gating,
+        current_team: state.current_team,
+        duds: State.share_duds(state),
+        question: state.question,
+        revealing: state.revealing
+      ]}, state}
+  end
+
+  # MISC INTERNALS
+
+  defp dispatch(call) do
+    Registry.dispatch(@pubsub, @pubsub_key, fn entries ->
+      for {pid, _} <- entries, do: send(pid, {:broadcast, call})
+    end)
+  end
+end
