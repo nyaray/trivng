@@ -18,6 +18,7 @@ defmodule TrivWeb.Router do
     pipe_through :api
 
     post "/", ApiController, :process
+    match(:*, "/echo", ApiController, :echo)
     match(:*, "/", ApiController, :bad_method)
     match(:*, "/*any", ApiController, :not_found)
   end
@@ -26,9 +27,5 @@ defmodule TrivWeb.Router do
     pipe_through :browser
     get "/", PageController, :index
     match :*, "/*any", PageController, :not_found
-  end
-
-  def handle_errors(conn, %{kind: _kind, reason: _reason, stack: _stack}) do
-    send_resp(conn, conn.status, "Oopsie")
   end
 end

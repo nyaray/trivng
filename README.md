@@ -24,7 +24,51 @@ _It is **strongly** suggested that you use the [asdf version manager](https://as
 * Install Elixir dependencies with `mix deps.get`.
 * Install Node.js dependencies with `cd assets && npm install`.
 
+## Features
+
+There is a real-time web-based scoreboard, a REST API and control script, that is run from the computer hosting Triv.
+
+### Real-time View/Scoreboard
+
+The real-time scoreboard is expected to be shown on a big TV that can be seen by all the players and currently shows:
+
+* The current question.
+* Answer suggestions.
+* An indicator, signalling whether or not team buzzes are accepted.
+* The name of the first team to respond.
+* If any, the list of teams, in order, that responded after the first responding team.
+
+### Rest API
+
+The Triv REST API exposes endpoints with a couple of accepted requests:
+
+* `/api` accepts `POST` requests, like `{"action": action, ...}` where `action` is:
+  * `clear` clear the current first responder and duds (non-first responders, in order).
+  * `buzz` register a team buzz, additional fields:
+    * `team_token`, the name of the team.
+  * `set_question` set a new question on the big screen/scoreboard, additional fields:
+    * `question`, an object containing:
+      * `question`, the question itself
+      * `correct_answer`, the correct answer
+      * `incorrect_answer`, an array of incorrect answers (typically 1 or 3 for boolean and multiple choice questions, respectively).
+  * `reveal` reveal the correct answer of the currently set question
+* `/api/echo` accepts any verb and replies with `200 OK` and echoes back what you sent to it.
+  * _NOTE: empty bodies are replied to with `204 No Content`._
+
+### Control Script
+
+The shell script `ctrl.sh` runs a control loop to allow you to select commands to send to the server for playing and testing purposes.
+
+* `e` - Exit
+* `c` - Clear
+* `n` - New question, fetches a question from `opentdb.com` and forwards it to Triv.
+* `r` - Reveal answer.
+* `1` - Buzz test team foo.
+* `2` - Buzz test team bar.
+* `3` - Buzz test team baz.
+
 ## Backlog
 
-- [ ] Echo action in ApiController.
-- [ ] ...
+* [ ] A structured way of providing questions from a file
+* [ ] (maybe?!?) Porting `ctrl.sh` to an interactive function to be run from the shell
+* [ ] ...

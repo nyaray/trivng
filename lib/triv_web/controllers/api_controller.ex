@@ -11,6 +11,15 @@ defmodule TrivWeb.ApiController do
     end
   end
 
+  def echo(conn, _params) do
+    case Plug.Conn.read_body(conn) do
+      {:ok, "", conn} -> send_resp(conn, 204, "")
+      {:ok, body, conn} -> do_echo_body(conn, body)
+      {:more, _partial, conn} -> send_resp(conn, 400, "Request too big.")
+      {:error, reason} -> send_resp(conn, 500, inspect(reason))
+    end
+  end
+
   def bad_method(conn, _params), do: send_resp(conn, 405, "Method Not Allowed. Expected POST.")
   def not_found(conn, _params), do: send_resp(conn, 404, "Not found")
 
@@ -37,6 +46,17 @@ defmodule TrivWeb.ApiController do
   end
 
   defp bad_request(conn), do: send_resp(conn, 400, "Meaningless payload received.")
+
+  defp do_echo_body(conn, body) do
+    case Poison.decode(body) do
+      {:ok, entity} ->
+        json(conn, entity)
+
+      {:error, %{:__struct__ => struct}} ->
+        resp_body = struct |> to_string() |> String.split(".") |> List.last()
+        send_resp(conn, 400, resp_body)
+    end
+  end
 
   defp unsupported_mtype(conn, c_type_raw) do
     send_resp(
