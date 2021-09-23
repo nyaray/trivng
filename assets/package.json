@@ -1,6 +1,7 @@
 {
   "repository": {},
   "license": "MIT",
+  "copyright": "2019-2021 Emilio Nyaray",
   "scripts": {
     "deploy": "webpack --mode production",
     "watch": "webpack --mode development --watch"
